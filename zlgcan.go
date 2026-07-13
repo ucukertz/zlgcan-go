@@ -1,16 +1,19 @@
 package zlgcan
 
 /*
+#cgo windows LDFLAGS: -lws2_32
 #include <stdlib.h>
 */
 import "C"
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"syscall"
 	"unsafe"
 )
 
+// ZCAN_TYPES
 const (
 	ZCAN_PCI5121              = 0x1
 	ZCAN_PCI9810              = 0x2
@@ -87,24 +90,42 @@ const (
 	ZCAN_VIRTUAL_DEVICE       = 0x63
 )
 
+// Constants (device types, status codes, etc.)
 const (
 	ZCAN_STATUS_ERR         = 0
 	ZCAN_STATUS_OK          = 1
 	ZCAN_STATUS_ONLINE      = 2
 	ZCAN_STATUS_OFFLINE     = 3
 	ZCAN_STATUS_UNSUPPORTED = 4
-)
 
-const (
 	ZCAN_TYPE_CAN   = 0x0
 	ZCAN_TYPE_CANFD = 0x1
-)
 
-const (
 	INVALID_DEVICE_HANDLE  = 0
 	INVALID_CHANNEL_HANDLE = 0
 )
 
+type ZCAN_CHANNEL_CONFIG struct {
+	AccCode    uint32
+	AccMask    uint32
+	AbitTiming uint32
+	DbitTiming uint32
+	Brp        uint32
+	Filter     uint8
+	Mode       uint8
+	Pad        uint16
+	Reserved   uint32
+}
+
+type ZCAN_CHANNEL_INIT_CONFIG struct {
+	CanType uint32
+	Config  ZCAN_CHANNEL_CONFIG
+}
+
+type ZCAN_CANFD_CHANNEL_INIT_CONFIG = ZCAN_CHANNEL_INIT_CONFIG
+type ZCAN_NORMAL_CHANNEL_INIT_CONFIG = ZCAN_CHANNEL_INIT_CONFIG
+
+// Device Info
 type ZCAN_DEVICE_INFO struct {
 	hw_Version     uint16
 	fw_Version     uint16
@@ -117,422 +138,533 @@ type ZCAN_DEVICE_INFO struct {
 	reserved       [8]uint16
 }
 
-func (info *ZCAN_DEVICE_INFO) _version(version uint16) string {
-	if version/0xFF >= 9 {
-		return fmt.Sprintf("V%02x.%02x", version>>8, version&0xff)
-	}
-	return fmt.Sprintf("V%d.%02x", version>>8, version&0xff)
+func (i *ZCAN_DEVICE_INFO) HwVersion() string {
+	return fmt.Sprintf("V%d.%02X", i.hw_Version>>8, i.hw_Version&0xFF)
 }
 
-func (info *ZCAN_DEVICE_INFO) HwVersion() string {
-	return info._version(info.hw_Version)
+func (i *ZCAN_DEVICE_INFO) FwVersion() string {
+	return fmt.Sprintf("V%d.%02X", i.fw_Version>>8, i.fw_Version&0xFF)
 }
 
-func (info *ZCAN_DEVICE_INFO) FwVersion() string {
-	return info._version(info.fw_Version)
+func (i *ZCAN_DEVICE_INFO) DrVersion() string {
+	return fmt.Sprintf("V%d.%02X", i.dr_Version>>8, i.dr_Version&0xFF)
 }
 
-func (info *ZCAN_DEVICE_INFO) DrVersion() string {
-	return info._version(info.dr_Version)
+func (i *ZCAN_DEVICE_INFO) InVersion() string {
+	return fmt.Sprintf("V%d.%02X", i.in_Version>>8, i.in_Version&0xFF)
 }
 
-func (info *ZCAN_DEVICE_INFO) InVersion() string {
-	return info._version(info.in_Version)
+func (i *ZCAN_DEVICE_INFO) IrqNum() uint16 {
+	return i.irq_Num
 }
 
-func (info *ZCAN_DEVICE_INFO) IrqNum() uint16 {
-	return info.irq_Num
+func (i *ZCAN_DEVICE_INFO) CanNum() uint8 {
+	return i.can_Num
 }
 
-func (info *ZCAN_DEVICE_INFO) CanNum() uint8 {
-	return info.can_Num
+func (i *ZCAN_DEVICE_INFO) Serial() string {
+	return strings.TrimRight(string(i.str_Serial_Num[:]), "\x00 ")
 }
 
-func (info *ZCAN_DEVICE_INFO) Serial() string {
-	serial := ""
-	for c := range info.str_Serial_Num {
-		if info.str_Serial_Num[c] > 0 {
-			serial += string(info.str_Serial_Num[c])
-		} else {
-			break
-		}
-	}
-	return serial
+func (i *ZCAN_DEVICE_INFO) HwType() string {
+	return strings.TrimRight(string(i.str_hw_Type[:]), "\x00 ")
 }
 
-func (info *ZCAN_DEVICE_INFO) HwType() string {
-	hwType := ""
-	for c := range info.str_hw_Type {
-		if info.str_hw_Type[c] > 0 {
-			hwType += string(info.str_hw_Type[c])
-		} else {
-			break
-		}
-	}
-	return hwType
-}
-
-type _ZCAN_CHANNEL_CAN_INIT_CONFIG struct {
-	AccCode  uint32
-	AccMask  uint32
-	Reserved uint32
-	Filter   uint8
-	Timing0  uint8
-	Timing1  uint8
-	Mode     uint8
-}
-type _ZCAN_CHANNEL_CANFD_INIT_CONFIG struct {
-	AccCode    uint32
-	AccMask    uint32
-	AbitTiming uint32
-	DbitTiming uint32
-	Brp        uint32
-	Filter     uint8
-	Mode       uint8
-	Pad        uint16
-	Reserved   uint32
-}
-
-// type _ZCAN_CHANNEL_INIT_CONFIG struct {
-//     Can   _ZCAN_CHANNEL_CAN_INIT_CONFIG
-//     Canfd _ZCAN_CHANNEL_CANFD_INIT_CONFIG
-// }
-
-type ZCAN_NORMAL_CHANNEL_INIT_CONFIG struct {
-	CanType uint32
-	Config  _ZCAN_CHANNEL_CAN_INIT_CONFIG
-}
-type ZCAN_CANFD_CHANNEL_INIT_CONFIG struct {
-	CanType uint32
-	Config  _ZCAN_CHANNEL_CANFD_INIT_CONFIG
-}
-type ZCAN_CHANNEL_ERR_INFO struct {
-	ErrorCode      uint32
-	PassiveErrData [3]uint8
-	ArLostErrData  uint8
-}
-type ZCAN_CHANNEL_STATUS struct {
-	ErrInterrupt uint8
-	RegMode      uint8
-	RegStatus    uint8
-	RegALCapture uint8
-	RegECCapture uint8
-	RegEWLimit   uint8
-	RegRECounter uint8
-	RegTECounter uint8
-	Reserved     uint32
-}
+// CAN Frame
 type ZCAN_CAN_FRAME struct {
-	Id      uint32
-	Dlc     uint8
-	X__pad  uint8
-	X__res0 uint8
-	X__res1 uint8
-	Data    [8]uint8
+	Id     uint32
+	Dlc    uint8
+	__pad  uint8
+	__res0 uint8
+	__res1 uint8
+	Data   [8]uint8
 }
 
-func (f *ZCAN_CAN_FRAME) GenerateID(can_id uint32, err, rtr, eff uint8) {
-	id := ((can_id << 3) | (uint32(err) << 2) | (uint32(rtr) << 1) | uint32(eff))
+func (f *ZCAN_CAN_FRAME) GenerateID(id uint32, eff, rtr, err uint8) {
 	f.Id = id
+	if eff != 0 {
+		f.Id |= 0x80000000
+	}
+	if rtr != 0 {
+		f.Id |= 0x40000000
+	}
+	if err != 0 {
+		f.Id |= 0x20000000
+	}
 }
 
 func (f *ZCAN_CAN_FRAME) GetFrameID() uint32 {
-	return f.Id >> 3
-}
-
-func (f *ZCAN_CAN_FRAME) GetFrameERR() uint8 {
-	return uint8(f.Id&0x04) >> 2
-}
-
-func (f *ZCAN_CAN_FRAME) GetFrameRTR() uint8 {
-	return uint8(f.Id&0x02) >> 1
+	return f.Id & 0x1FFFFFFF
 }
 
 func (f *ZCAN_CAN_FRAME) GetFrameEFF() uint8 {
-	return uint8(f.Id & 0x01)
+	if (f.Id & 0x80000000) != 0 {
+		return 1
+	}
+	return 0
 }
 
+func (f *ZCAN_CAN_FRAME) GetFrameRTR() uint8 {
+	if (f.Id & 0x40000000) != 0 {
+		return 1
+	}
+	return 0
+}
+
+func (f *ZCAN_CAN_FRAME) GetFrameERR() uint8 {
+	if (f.Id & 0x20000000) != 0 {
+		return 1
+	}
+	return 0
+}
+
+// CANFD Frame
 type ZCAN_CANFD_FRAME struct {
-	Id      uint32
-	Len     uint8
-	Flags   uint8
-	X__res0 uint8
-	X__res1 uint8
-	Data    [64]uint8
+	Id     uint32
+	Len    uint8
+	Flags  uint8
+	__res0 uint8
+	__res1 uint8
+	Data   [64]uint8
 }
 
-func (f *ZCAN_CANFD_FRAME) GenerateID(can_id uint32, err, rtr, eff uint8) {
-	id := ((can_id << 3) | (uint32(err) << 2) | (uint32(rtr) << 1) | uint32(eff))
+func (f *ZCAN_CANFD_FRAME) GenerateID(id uint32, eff, rtr, err uint8) {
 	f.Id = id
+	if eff != 0 {
+		f.Id |= 0x80000000
+	}
+	if rtr != 0 {
+		f.Id |= 0x40000000
+	}
+	if err != 0 {
+		f.Id |= 0x20000000
+	}
 }
 
 func (f *ZCAN_CANFD_FRAME) GetFrameID() uint32 {
-	return f.Id >> 3
-}
-
-func (f *ZCAN_CANFD_FRAME) GetFrameERR() uint8 {
-	return uint8(f.Id&0x04) >> 2
-}
-
-func (f *ZCAN_CANFD_FRAME) GetFrameRTR() uint8 {
-	return uint8(f.Id&0x02) >> 1
+	return f.Id & 0x1FFFFFFF
 }
 
 func (f *ZCAN_CANFD_FRAME) GetFrameEFF() uint8 {
-	return uint8(f.Id & 0x01)
+	if (f.Id & 0x80000000) != 0 {
+		return 1
+	}
+	return 0
 }
 
-func (f *ZCAN_CANFD_FRAME) GenerateFlags(brs, esi, res uint8) {
-	flags := ((brs << 7) | (esi << 6) | res)
-	f.Flags = flags
+func (f *ZCAN_CANFD_FRAME) GetFrameRTR() uint8 {
+	if (f.Id & 0x40000000) != 0 {
+		return 1
+	}
+	return 0
+}
+
+func (f *ZCAN_CANFD_FRAME) GetFrameERR() uint8 {
+	if (f.Id & 0x20000000) != 0 {
+		return 1
+	}
+	return 0
+}
+
+func (f *ZCAN_CANFD_FRAME) GenerateFlags(brs, esi, __res uint8) {
+	f.Flags = 0
+	if brs != 0 {
+		f.Flags |= 0x01
+	}
+	if esi != 0 {
+		f.Flags |= 0x02
+	}
 }
 
 func (f *ZCAN_CANFD_FRAME) GetFrameBRS() uint8 {
-	return uint8(f.Flags&0x80) >> 7
+	if (f.Flags & 0x01) != 0 {
+		return 1
+	}
+	return 0
 }
 
 func (f *ZCAN_CANFD_FRAME) GetFrameESI() uint8 {
-	return uint8(f.Flags&0x40) >> 6
+	if (f.Flags & 0x02) != 0 {
+		return 1
+	}
+	return 0
 }
 
-func (f *ZCAN_CANFD_FRAME) GetFrameRES() uint8 {
-	return uint8(f.Flags & 0x3F)
-}
-
+// Transmit/Receive Data
 type ZCAN_Transmit_Data struct {
 	Frame ZCAN_CAN_FRAME
 	Type  uint32
 }
+
 type ZCAN_Receive_Data struct {
 	Frame     ZCAN_CAN_FRAME
 	Timestamp uint64
 }
+
 type ZCAN_TransmitFD_Data struct {
 	Frame ZCAN_CANFD_FRAME
 	Type  uint32
 }
+
 type ZCAN_ReceiveFD_Data struct {
 	Frame     ZCAN_CANFD_FRAME
 	Timestamp uint64
 }
-type ZCAN_AUTO_TRANSMIT_OBJ struct {
-	Enable   uint16
-	Index    uint16
-	Interval uint32
-	Obj      ZCAN_Transmit_Data
-}
-type ZCANFD_AUTO_TRANSMIT_OBJ struct {
-	Enable   uint16
-	Index    uint16
-	Interval uint32
-	Obj      ZCAN_TransmitFD_Data
-}
+
+// IProperty
 type ZCAN_IProperty struct {
 	SetValue     *[0]byte
 	GetValue     *[0]byte
 	GetPropertys *[0]byte
 }
 
+// ZCAN wrapper
 type ZCAN struct {
 	dll syscall.Handle
 }
 
+// Constructor
 func NewZCAN(dllPath string) (*ZCAN, error) {
-	var dll syscall.Handle
-	if runtime.GOOS == "windows" {
-		dll, _ = syscall.LoadLibrary(".\\zlgcan_x64\\zlgcan.dll")
-	} else {
-		fmt.Println("No support now!")
+	if runtime.GOOS != "windows" {
 		return nil, fmt.Errorf("unsupported OS")
+	}
+	dll, err := syscall.LoadLibrary(dllPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load DLL: %w", err)
 	}
 	return &ZCAN{dll: dll}, nil
 }
 
 func (zc *ZCAN) OpenDevice(deviceType int, deviceIndex int, reserved int) int {
-	if zc.dll == 0 {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_OpenDevice")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_OpenDevice:", err)
 		return -1
 	}
-	openDevice, _ := syscall.GetProcAddress(zc.dll, "ZCAN_OpenDevice")
-	ret, _, _ := syscall.SyscallN(
-		openDevice,
-		uintptr(deviceType),
-		uintptr(deviceIndex),
-		uintptr(reserved))
+	ret, _, _ := syscall.SyscallN(proc, uintptr(deviceType), uintptr(deviceIndex), uintptr(reserved))
 	return int(ret)
 }
 
 func (zc *ZCAN) CloseDevice(deviceHandle int) int {
-	if zc.dll == 0 {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_CloseDevice")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_CloseDevice:", err)
 		return -1
 	}
-	closeDevice, _ := syscall.GetProcAddress(zc.dll, "ZCAN_CloseDevice")
-	ret, _, _ := syscall.SyscallN(closeDevice, uintptr(deviceHandle))
+	ret, _, _ := syscall.SyscallN(proc, uintptr(deviceHandle))
 	return int(ret)
 }
 
 func (zc *ZCAN) GetDeviceInf(deviceHandle int) *ZCAN_DEVICE_INFO {
-	info := ZCAN_DEVICE_INFO{}
-	getDeviceInf, _ := syscall.GetProcAddress(zc.dll, "ZCAN_GetDeviceInf")
-	ret, _, _ := syscall.SyscallN(getDeviceInf, uintptr(deviceHandle), uintptr(unsafe.Pointer(&info)))
-	if ret == ZCAN_STATUS_OK {
-		return (*ZCAN_DEVICE_INFO)(&info)
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_GetDeviceInf")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_GetDeviceInf:", err)
+		return nil
 	}
-	fmt.Println("error calling ZCAN_GetDeviceInf:", ret)
+	info := ZCAN_DEVICE_INFO{}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(deviceHandle), uintptr(unsafe.Pointer(&info)))
+	if ret == ZCAN_STATUS_OK {
+		return &info
+	}
+	fmt.Println("ZCAN_GetDeviceInf failed with code:", ret)
 	return nil
 }
 
 func (zc *ZCAN) IsDeviceOnLine(deviceHandle int) int {
-	isDeviceOnline, _ := syscall.GetProcAddress(zc.dll, "ZCAN_IsDeviceOnLine")
-	ret, _, _ := syscall.SyscallN(isDeviceOnline, uintptr(deviceHandle))
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_IsDeviceOnLine")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_IsDeviceOnLine:", err)
+		return -1
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(deviceHandle))
 	return int(ret)
 }
 
-func (zc *ZCAN) InitCAN(deviceHandle int, canIndex uint, initConfig *ZCAN_NORMAL_CHANNEL_INIT_CONFIG) int {
-	initCAN, _ := syscall.GetProcAddress(zc.dll, "ZCAN_InitCAN")
-	ret, _, _ := syscall.SyscallN(initCAN, uintptr(deviceHandle), uintptr(canIndex), uintptr(unsafe.Pointer(initConfig)))
+func (zc *ZCAN) InitCAN(deviceHandle int, canIndex uint, initConfig *ZCAN_CHANNEL_INIT_CONFIG) int {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_InitCAN")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_InitCAN:", err)
+		return INVALID_CHANNEL_HANDLE
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(deviceHandle), uintptr(canIndex), uintptr(unsafe.Pointer(initConfig)))
 	return int(ret)
 }
 
-func (zc *ZCAN) InitCANFD(deviceHandle int, canIndex uint, initConfig *ZCAN_CANFD_CHANNEL_INIT_CONFIG) int {
-	initCAN, _ := syscall.GetProcAddress(zc.dll, "ZCAN_InitCAN")
-	ret, _, _ := syscall.SyscallN(initCAN, uintptr(deviceHandle), uintptr(canIndex), uintptr(unsafe.Pointer(initConfig)))
-	return int(ret)
+func (zc *ZCAN) InitCANFD(deviceHandle int, canIndex uint, initConfig *ZCAN_CHANNEL_INIT_CONFIG) int {
+	return zc.InitCAN(deviceHandle, canIndex, initConfig)
 }
 
 func (zc *ZCAN) StartCAN(channelHandle int) uint {
-	startCAN, _ := syscall.GetProcAddress(zc.dll, "ZCAN_StartCAN")
-	ret, _, _ := syscall.SyscallN(startCAN, uintptr(channelHandle))
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_StartCAN")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_StartCAN:", err)
+		return ZCAN_STATUS_ERR
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle))
 	return uint(ret)
 }
 
 func (zc *ZCAN) ResetCAN(channelHandle int) uint {
-	resetCAN, _ := syscall.GetProcAddress(zc.dll, "ZCAN_ResetCAN")
-	ret, _, _ := syscall.SyscallN(resetCAN, uintptr(channelHandle))
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_ResetCAN")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_ResetCAN:", err)
+		return ZCAN_STATUS_ERR
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle))
 	return uint(ret)
+}
+
+func (zc *ZCAN) SetCANBaudRate(deviceHandle int, canIndex int, baudrate int) uint {
+	ip, err := zc.GetIProperty(deviceHandle)
+	if err != nil || ip == nil {
+		fmt.Println("Failed to get IProperty:", err)
+		return ZCAN_STATUS_ERR
+	}
+	defer zc.ReleaseIProperty(ip)
+
+	path := fmt.Sprintf("%d/baud_rate", canIndex)
+	value := fmt.Sprintf("%d", baudrate)
+
+	return zc.SetValue(ip, path, value)
 }
 
 func (zc *ZCAN) ClearBuffer(channelHandle int) uint {
-	clearBuffer, _ := syscall.GetProcAddress(zc.dll, "ZCAN_ClearBuffer")
-	ret, _, _ := syscall.SyscallN(clearBuffer, uintptr(channelHandle))
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_ClearBuffer")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_ClearBuffer:", err)
+		return ZCAN_STATUS_ERR
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle))
 	return uint(ret)
 }
 
-func (zc *ZCAN) ReadChannelErrInfo(channelHandle int) (*ZCAN_CHANNEL_ERR_INFO, error) {
-	errInfo := ZCAN_CHANNEL_ERR_INFO{}
-	readChannelErrInfo, _ := syscall.GetProcAddress(zc.dll, "ZCAN_ReadChannelErrInfo")
-	ret, _, _ := syscall.SyscallN(readChannelErrInfo, uintptr(channelHandle), uintptr(unsafe.Pointer(&errInfo)))
-	if ret == ZCAN_STATUS_OK {
-		return (*ZCAN_CHANNEL_ERR_INFO)(&errInfo), nil
+func (zc *ZCAN) Transmit(channelHandle int, stdMsg []ZCAN_Transmit_Data, length uint) uint {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_Transmit")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_Transmit:", err)
+		return 0
 	}
-	fmt.Println("error calling ZCAN_ReadChannelErrInfo:", ret)
-	return nil, fmt.Errorf("error calling ZCAN_ReadChannelErrInfo")
-}
-
-func (zc *ZCAN) ReadChannelStatus(channelHandle int) (*ZCAN_CHANNEL_STATUS, error) {
-	status := ZCAN_CHANNEL_STATUS{}
-	readChannelStatus, _ := syscall.GetProcAddress(zc.dll, "ZCAN_ReadChannelStatus")
-	ret, _, _ := syscall.SyscallN(readChannelStatus, uintptr(channelHandle), uintptr(unsafe.Pointer(&status)))
-	if ret == ZCAN_STATUS_OK {
-		return (*ZCAN_CHANNEL_STATUS)(&status), nil
-	}
-	fmt.Println("error calling ZCAN_ReadChannelStatus:", ret)
-	return nil, fmt.Errorf("error calling ZCAN_ReadChannelStatus")
-}
-
-func (zc *ZCAN) GetReceiveNum(channelHandle int, canType uint) uint {
-	getReceiveNum, _ := syscall.GetProcAddress(zc.dll, "ZCAN_GetReceiveNum")
-	ret, _, _ := syscall.SyscallN(getReceiveNum, uintptr(channelHandle), uintptr(canType))
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(unsafe.Pointer(&stdMsg[0])), uintptr(length))
 	return uint(ret)
 }
 
-func (zc *ZCAN) Transmit(channelHandle int, stdMsg []ZCAN_Transmit_Data, len uint) uint {
-	transmit, _ := syscall.GetProcAddress(zc.dll, "ZCAN_Transmit")
-	ret, _, _ := syscall.SyscallN(transmit, uintptr(channelHandle), uintptr(unsafe.Pointer(&stdMsg[0])), uintptr(len))
+func (zc *ZCAN) TransmitFD(channelHandle int, fdMsg []ZCAN_TransmitFD_Data, length uint) uint {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_TransmitFD")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_TransmitFD:", err)
+		return 0
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(unsafe.Pointer(&fdMsg[0])), uintptr(length))
 	return uint(ret)
 }
 
 func (zc *ZCAN) Receive(channelHandle int, rcvNum uint, waitTime int) ([]ZCAN_Receive_Data, uint) {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_Receive")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_Receive:", err)
+		return nil, 0
+	}
 	msgs := make([]ZCAN_Receive_Data, rcvNum)
-	receive, _ := syscall.GetProcAddress(zc.dll, "ZCAN_Receive")
-	ret, _, _ := syscall.SyscallN(receive, uintptr(channelHandle), uintptr(unsafe.Pointer(&msgs[0])), uintptr(rcvNum), uintptr(waitTime))
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(unsafe.Pointer(&msgs[0])), uintptr(rcvNum), uintptr(waitTime))
 	return msgs, uint(ret)
 }
 
-func (zc *ZCAN) TransmitFD(channelHandle int, fdMsg []ZCAN_TransmitFD_Data, len uint) uint {
-	transmitFD, _ := syscall.GetProcAddress(zc.dll, "ZCAN_TransmitFD")
-	ret, _, _ := syscall.SyscallN(transmitFD, uintptr(channelHandle), uintptr(unsafe.Pointer(&fdMsg[0])), uintptr(len))
-	return uint(ret)
-}
-
 func (zc *ZCAN) ReceiveFD(channelHandle int, rcvNum uint, waitTime int) ([]ZCAN_ReceiveFD_Data, uint) {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_ReceiveFD")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_ReceiveFD:", err)
+		return nil, 0
+	}
 	if waitTime == 0 {
 		waitTime = -1
 	}
 	msgs := make([]ZCAN_ReceiveFD_Data, rcvNum)
-	receiveFD, _ := syscall.GetProcAddress(zc.dll, "ZCAN_ReceiveFD")
-	ret, _, _ := syscall.SyscallN(receiveFD, uintptr(channelHandle), uintptr(unsafe.Pointer(&msgs[0])), uintptr(rcvNum), uintptr(waitTime))
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(unsafe.Pointer(&msgs[0])), uintptr(rcvNum), uintptr(waitTime))
 	return msgs, uint(ret)
 }
 
+func (zc *ZCAN) GetReceiveNum(channelHandle int, canType uint) uint {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_GetReceiveNum")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_GetReceiveNum:", err)
+		return 0
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(canType))
+	return uint(ret)
+}
+
+func (zc *ZCAN) TransmitData(channelHandle int, data unsafe.Pointer, length uint) uint {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_TransmitData")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_TransmitData:", err)
+		return 0
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(data), uintptr(length))
+	return uint(ret)
+}
+
+func (zc *ZCAN) ReceiveData(channelHandle int, data unsafe.Pointer, length uint, waitTime int) uint {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_ReceiveData")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_ReceiveData:", err)
+		return 0
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(data), uintptr(length), uintptr(waitTime))
+	return uint(ret)
+}
+
+// IProperty functions
 func (zc *ZCAN) GetIProperty(deviceHandle int) (*ZCAN_IProperty, error) {
-	getIProperty, _ := syscall.GetProcAddress(zc.dll, "GetIProperty")
-	ret, _, callErr := syscall.SyscallN(getIProperty, uintptr(deviceHandle))
+	proc, err := syscall.GetProcAddress(zc.dll, "GetIProperty")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GetIProperty: %w", err)
+	}
+	ret, _, callErr := syscall.SyscallN(proc, uintptr(deviceHandle))
 	if callErr != 0 {
 		return nil, fmt.Errorf("error calling GetIProperty: %w", callErr)
 	}
-	// transform the ret to a pointer for ZCAN_IProperty
-	iproperty := (*ZCAN_IProperty)(unsafe.Pointer(ret))
-	return iproperty, nil
+	return (*ZCAN_IProperty)(unsafe.Pointer(ret)), nil
 }
 
-func (zc *ZCAN) SetValue(iproperty *ZCAN_IProperty, path, value string) uint {
-	setValue := iproperty.SetValue
+func (zc *ZCAN) SetValue(ip *ZCAN_IProperty, path, value string) uint {
 	cPath := C.CString(path)
 	cValue := C.CString(value)
 	defer C.free(unsafe.Pointer(cPath))
 	defer C.free(unsafe.Pointer(cValue))
-	ret, _, _ := syscall.SyscallN(uintptr(unsafe.Pointer(setValue)), uintptr(unsafe.Pointer(cPath)), uintptr(unsafe.Pointer(cValue)))
+	ret, _, _ := syscall.SyscallN(uintptr(unsafe.Pointer(ip.SetValue)), uintptr(unsafe.Pointer(cPath)), uintptr(unsafe.Pointer(cValue)))
 	return uint(ret)
 }
 
-func (zc *ZCAN) GetValue(iproperty *ZCAN_IProperty, path string) string {
-	getValue := iproperty.GetValue
+func (zc *ZCAN) GetValue(ip *ZCAN_IProperty, path string) string {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	ret, _, _ := syscall.SyscallN(uintptr(unsafe.Pointer(getValue)), uintptr(unsafe.Pointer(cPath)))
+	ret, _, _ := syscall.SyscallN(uintptr(unsafe.Pointer(ip.GetValue)), uintptr(unsafe.Pointer(cPath)))
 	return C.GoString((*C.char)(unsafe.Pointer(ret)))
 }
 
-func (zc *ZCAN) ReleaseIProperty(iproperty *ZCAN_IProperty) uint {
-	proc, _ := syscall.GetProcAddress(zc.dll, "ReleaseIProperty")
-	ret, _, _ := syscall.SyscallN(proc, uintptr(unsafe.Pointer(iproperty)))
+func (zc *ZCAN) ReleaseIProperty(ip *ZCAN_IProperty) uint {
+	proc, err := syscall.GetProcAddress(zc.dll, "ReleaseIProperty")
+	if err != nil {
+		fmt.Println("Failed to get ReleaseIProperty:", err)
+		return ZCAN_STATUS_ERR
+	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(unsafe.Pointer(ip)))
 	return uint(ret)
 }
 
-func can_start(zcanlib *ZCAN, handle int, channel int) int {
-	ip, _ := zcanlib.GetIProperty(handle)
-	ret := zcanlib.SetValue(ip, "/initenal_resistance", "1")
-	if ret != ZCAN_STATUS_OK {
-		fmt.Println("Set resistance failed")
+// ZCAN_SetReference sets device attributes via the ZCAN API.
+// RefType=0: baud rate, pData = DWORD timing value (0x060007 = 500kbps).
+func (zc *ZCAN) ZCAN_SetReference(channelHandle int, refType uint, pData unsafe.Pointer) uint {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_SetReference")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_SetReference:", err)
+		return ZCAN_STATUS_ERR
 	}
-	ret = zcanlib.SetValue(ip, fmt.Sprintf("%d/clock", channel), "60000000")
-	if ret != ZCAN_STATUS_OK {
-		fmt.Println("Set clock failed")
-	}
-	zcanlib.ReleaseIProperty(ip)
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(refType), uintptr(pData))
+	return uint(ret)
+}
 
-	initCfg := ZCAN_CANFD_CHANNEL_INIT_CONFIG{
-		CanType: ZCAN_TYPE_CANFD,
+// ZCAN_GetReference retrieves device attributes via the ZCAN API.
+func (zc *ZCAN) ZCAN_GetReference(channelHandle int, refType uint, pData unsafe.Pointer) uint {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_GetReference")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_GetReference:", err)
+		return ZCAN_STATUS_ERR
 	}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(refType), uintptr(pData))
+	return uint(ret)
+}
+
+func (zc *ZCAN) ReadChannelErrInfo(channelHandle int) ([]byte, uint) {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_ReadChannelErrInfo")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_ReadChannelErrInfo:", err)
+		return nil, 0
+	}
+	buf := make([]byte, 64)
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	return buf, uint(ret)
+}
+
+type ZCAN_CHANNEL_STATUS struct {
+	ATYPE           uint8
+	ErrorCode       uint8
+	Passive_Err_Tx  uint8
+	Passive_Err_Rx  uint8
+	EPL_Cnt         uint8
+	Status          uint8
+	Warn_Cnt        uint8
+	Err_Cnt         [8]uint8
+}
+
+func (zc *ZCAN) ReadChannelStatus(channelHandle int) (*ZCAN_CHANNEL_STATUS, uint) {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_ReadChannelStatus")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_ReadChannelStatus:", err)
+		return nil, 0
+	}
+	status := ZCAN_CHANNEL_STATUS{}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(channelHandle), uintptr(unsafe.Pointer(&status)))
+	return &status, uint(ret)
+}
+
+func (zc *ZCAN) GetAvailableDevices() int {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_GetAvailableDevices")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_GetAvailableDevices:", err)
+		return 0
+	}
+	ret, _, _ := syscall.SyscallN(proc)
+	return int(ret)
+}
+
+type ZCAN_DEVICE_INFO_EX struct {
+	Index         uint32
+	DeviceType    uint32
+	ChannelMask   uint32
+	ChannelNum    uint32
+	Serial        [32]uint8
+	HardwareVers  [48]uint8
+	FirmwareVers  [48]uint8
+	DriverVers    [48]uint8
+	KernelVers    [48]uint8
+	Name          [64]uint8
+}
+
+func (zc *ZCAN) GetDeviceInfoEx(deviceIndex int) (*ZCAN_DEVICE_INFO_EX, int) {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_GetDeviceInfoEx")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_GetDeviceInfoEx:", err)
+		return nil, 0
+	}
+	info := ZCAN_DEVICE_INFO_EX{}
+	ret, _, _ := syscall.SyscallN(proc, uintptr(deviceIndex), uintptr(unsafe.Pointer(&info)))
+	return &info, int(ret)
+}
+
+func (zc *ZCAN) SetDeviceChangeCallback(callback uintptr) uint {
+	proc, err := syscall.GetProcAddress(zc.dll, "ZCAN_SetDeviceChangeCallback")
+	if err != nil {
+		fmt.Println("Failed to get ZCAN_SetDeviceChangeCallback:", err)
+		return ZCAN_STATUS_ERR
+	}
+	ret, _, _ := syscall.SyscallN(proc, callback)
+	return uint(ret)
+}
+
+func can_start(zcan *ZCAN, handle int, ch int) int {
+	zcan.SetCANBaudRate(handle, ch, 500000)
+	initCfg := ZCAN_CHANNEL_INIT_CONFIG{
+		CanType: ZCAN_TYPE_CAN,
+	}
+	initCfg.Config.AccCode = 0x00000000
+	initCfg.Config.AccMask = 0xFFFFFFFF
 	initCfg.Config.Mode = 0
-	initCfg.Config.AbitTiming = 101166  // 1Mbps
-	initCfg.Config.DbitTiming = 8487694 // 1Mbps
-
-	can_handle := zcanlib.InitCANFD(handle, 0, &initCfg)
-	if can_handle == INVALID_CHANNEL_HANDLE {
-		fmt.Println("Init CANFD failed")
+	canHandle := zcan.InitCANFD(handle, uint(ch), &initCfg)
+	if canHandle != INVALID_CHANNEL_HANDLE {
+		if zcan.StartCAN(canHandle) != ZCAN_STATUS_OK {
+			return INVALID_CHANNEL_HANDLE
+		}
 	}
-
-	_ = zcanlib.StartCAN(can_handle)
-	return can_handle
+	return canHandle
 }

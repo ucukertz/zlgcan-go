@@ -1,75 +1,52 @@
 # ZLGCAN Go Wrapper
 
-This project is a Go language wrapper for ZLG's CAN box driver. It provides a Go interface for interacting with ZLG CAN devices.
+Go wrapper for the ZLG CAN adapter (`zlgcan.dll`). Provides device control, channel initialization, CAN/CANFD transmit/receive, and property configuration.
 
 ## Features
 
-- Support for opening and closing CAN devices
-- Retrieving device information
-- Checking device online status
-- Initializing CAN and CANFD channels
-- Sending and receiving CAN/CANFD messages
-- Getting and setting device properties
+- Device open / close / online detection
+- Device info and channel status queries
+- CAN / CANFD channel init and start
+- CAN / CANFD frame transmit and receive
+- Property get/set via `IProperty`
+- Auxiliary APIs: device info, channel error, available devices
 
-## Installation
-
-Ensure you have Go installed on your system. Then, clone this repository:
+## Install
 
 ```
-git clone https://github.com/Gyanano/zlgcan-go.git
+go get zlgcan
 ```
+
+Ensure `zlgcan_x64/zlgcan.dll` is in the working directory.
 
 ## Usage
 
-1. Import the package:
-
 ```go
-import "github.com/Gyanano/zlgcan-go"
-```
+package main
 
-2. Create a ZCAN instance:
+import "zlgcan"
 
-```go
-zcanlib, err := zlgcan.NewZCAN(".\\zlgcan_x64\\zlgcan.dll")
-if err != nil {
-    // Handle error
+func main() {
+    z := zlgcan.NewZCAN(".\\zlgcan_x64\\zlgcan.dll")
+    dev := z.OpenDevice(zlgcan.ZCAN_USBCAN2, 0, 0)
+    if dev == zlgcan.INVALID_DEVICE_HANDLE {
+        panic("open failed")
+    }
+    defer z.CloseDevice(dev)
+
+    ch := can_start(z, dev, 0, 500000) // channel 0 at 500kbps
+    if ch == zlgcan.INVALID_CHANNEL_HANDLE {
+        panic("channel init failed")
+    }
+    defer z.CloseDevice(ch)
+
+    // ... transmit / receive ...
 }
 ```
 
-3. Open a device:
-
-```go
-handle := zcanlib.OpenDevice(zlgcan.ZCAN_USBCANFD_200U, 0, 0)
-if handle == zlgcan.INVALID_DEVICE_HANDLE {
-    // Handle error
-}
-```
-
-4. Use other functions, such as sending and receiving messages:
-
-```go
-// Send CAN message
-msgs := make([]zlgcan.ZCAN_Transmit_Data, 1)
-// Set message content
-ret := zcanlib.Transmit(chanHandle, msgs, 1)
-
-// Receive CAN message
-rcvNum := zcanlib.GetReceiveNum(chanHandle, zlgcan.ZCAN_TYPE_CAN)
-if rcvNum > 0 {
-    rcvMsg, _ := zcanlib.Receive(chanHandle, rcvNum, 0)
-    // Process received messages
-}
-```
-
-5. Close the device:
-
-```go
-zcanlib.CloseDevice(handle)
-```
+See `expl/main.go` for a full example.
 
 ## Testing
-
-The project includes a series of unit tests covering the main functionalities. To run the tests:
 
 ```
 go test
@@ -77,13 +54,9 @@ go test
 
 ## Notes
 
-- This project has only been tested in a Windows environment.
-- Ensure that ZLG's CAN device drivers are properly installed.
-- Please carefully read ZLG's original documentation to understand the specific uses and parameter meanings of each function before use.
-
-## Contributing
-
-Issues and pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+- Windows only (tested)
+- ZLG device driver must be installed
+- Read `USB-CAN-FD-B-API-Manual.md` for API reference
 
 ## License
 

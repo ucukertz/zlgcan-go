@@ -1,0 +1,32 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Vendor DLLs
+!zlgcan_x64/
+!zlgcan_x64/**
+
+# Go build
+*.o
+*.a
+
+# Test binary
+*.test
+
+# Go coverage
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
