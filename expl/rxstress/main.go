@@ -17,34 +17,11 @@ func main() {
 		log.Fatal("Failed to load DLL: ", err)
 	}
 
-	handle := zcanlib.OpenDevice(zlgcan.ZCAN_USBCAN2, 0, 0)
-	if handle == zlgcan.INVALID_DEVICE_HANDLE {
-		log.Fatal("OpenDevice failed")
+	ch := zcanlib.OpenAndStart(zlgcan.ZCAN_USBCAN2, 0, 0, 500000)
+	if ch == zlgcan.INVALID_CHANNEL_HANDLE {
+		log.Fatal("OpenAndStart failed")
 	}
-	defer zcanlib.CloseDevice(handle)
-
-	ip, err := zcanlib.GetIProperty(handle)
-	if err != nil || ip == nil {
-		log.Fatal("GetIProperty failed: ", err)
-	}
-	zcanlib.SetValue(ip, "0/baud_rate", "500000")
-	zcanlib.ReleaseIProperty(ip)
-
-	channel := zcanlib.InitCANFD(handle, 0, &zlgcan.ZCAN_CHANNEL_INIT_CONFIG{
-		CanType: zlgcan.ZCAN_TYPE_CAN,
-		Config: zlgcan.ZCAN_CHANNEL_CONFIG{
-			AccCode: 0x00000000,
-			AccMask: 0xFFFFFFFF,
-			Filter:  0,
-			Mode:    0,
-		},
-	})
-	if channel == zlgcan.INVALID_CHANNEL_HANDLE {
-		log.Fatal("InitCANFD failed")
-	}
-	if zcanlib.StartCAN(channel) != zlgcan.ZCAN_STATUS_OK {
-		log.Fatal("StartCAN failed")
-	}
+	defer zcanlib.CloseDevice(ch)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -72,12 +49,12 @@ loop:
 		default:
 		}
 
-		n := zcanlib.GetReceiveNum(channel, zlgcan.ZCAN_TYPE_CAN)
+		n := zcanlib.GetReceiveNum(ch, zlgcan.ZCAN_TYPE_CAN)
 		if n == 0 {
 			continue
 		}
 
-		_, num := zcanlib.Receive(channel, n, 0)
+		_, num := zcanlib.Receive(ch, n, 0)
 		total += uint64(num)
 		batch += uint64(num)
 	}
