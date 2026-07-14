@@ -1,13 +1,8 @@
 # Binaries
 *.exe
 *.exe~
-*.dll
 *.so
 *.dylib
-
-# Vendor DLLs
-!zlgcan_x64/
-!zlgcan_x64/**
 
 # Go build
 *.o
