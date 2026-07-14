@@ -7,6 +7,7 @@ package zlgcan
 import "C"
 import (
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -388,11 +389,22 @@ type ZCAN struct {
 }
 
 // NewZCAN loads the ZLG CAN DLL and returns a ZCAN instance.
-// dllPath should point to zlgcan.dll (e.g. ".\\zlgcan_x64\\zlgcan.dll").
+// NewZCAN loads the ZLG CAN DLL. Pass "" to auto-discover the bundled DLL.
 // Returns error if not on Windows or if the DLL cannot be loaded.
+// FindDLL returns the path to zlgcan.dll bundled with this package.
+// Works whether used locally or via go get (module cache).
+func FindDLL() string {
+	_, src, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(src), "zlgcan_x64", "zlgcan.dll")
+}
+
+// NewZCAN loads the ZLG CAN DLL. Pass "" to auto-discover the bundled DLL.
 func NewZCAN(dllPath string) (*ZCAN, error) {
 	if runtime.GOOS != "windows" {
 		return nil, fmt.Errorf("unsupported OS")
+	}
+	if dllPath == "" {
+		dllPath = FindDLL()
 	}
 	dll, err := syscall.LoadLibrary(dllPath)
 	if err != nil {
@@ -837,7 +849,7 @@ func can_start(zcan *ZCAN, handle int, ch int) int {
 // Returns the channel handle, or INVALID_CHANNEL_HANDLE on failure.
 // This combines: OpenDevice → SetCANBaudRate → InitCAN → StartCAN.
 //
-//	z, _ := zlgcan.NewZCAN(".\\zlgcan_x64\\zlgcan.dll")
+//	z, _ := zlgcan.NewZCAN("")
 //	ch := z.OpenAndStart(zlgcan.ZCAN_USBCAN2, 0, 0, 500000)
 //	if ch == zlgcan.INVALID_CHANNEL_HANDLE { ... }
 //	defer z.CloseDevice(ch)

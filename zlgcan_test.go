@@ -12,7 +12,7 @@ const testDeviceType = ZCAN_USBCAN2
 
 func newTestZCAN(t *testing.T) *ZCAN {
 	t.Helper()
-	zcanlib, err := NewZCAN(".\\zlgcan_x64\\zlgcan.dll")
+	zcanlib, err := NewZCAN("")
 	if err != nil {
 		t.Fatalf("Failed to load ZCAN DLL: %v", err)
 	}

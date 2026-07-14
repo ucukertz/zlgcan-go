@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	zcanlib, err := zlgcan.NewZCAN("./zlgcan_x64/zlgcan.dll")
+	zcanlib, err := zlgcan.NewZCAN("")
 	if err != nil {
 		log.Fatal("Failed to load DLL: ", err)
 	}
