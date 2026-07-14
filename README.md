@@ -1,25 +1,27 @@
 # ZLGCAN Go Wrapper
 
-ZLG CAN 适配器（`zlgcan.dll`）的 Go 语言封装。提供设备控制、通道初始化、CAN/CANFD 收发及属性配置接口。
+[中文文档](README_CN.md)
 
-## 功能
+Go wrapper for the ZLG CAN adapter (`zlgcan.dll`). Provides device control, channel initialization, CAN/CANFD transmit/receive, and property configuration.
 
-- 设备打开 / 关闭 / 在线检测
-- 获取设备信息与通道状态
-- CAN / CANFD 通道初始化与启动
-- CAN / CANFD 帧发送与接收
-- 通过 `IProperty` 获取和设置设备属性
-- 参考设备信息、通道错误、可用设备查询等辅助接口
+## Features
 
-## 安装
+- Device open / close / online detection
+- Device info and channel status queries
+- CAN / CANFD channel init and start
+- CAN / CANFD frame transmit and receive
+- Property get/set via `IProperty`
+- Auxiliary APIs: device info, channel error, available devices
+
+## Install
 
 ```
 go get zlgcan
 ```
 
-确保 `zlgcan_x64/zlgcan.dll` 在工作目录中。
+Ensure `zlgcan_x64/zlgcan.dll` is in the working directory.
 
-## 使用
+## Usage
 
 ```go
 package main
@@ -34,30 +36,30 @@ func main() {
     }
     defer z.CloseDevice(dev)
 
-    ch := zcan_open(z, dev, 0, 500000) // opens channel 0 at 500kbps
+    ch := can_start(z, dev, 0, 500000) // channel 0 at 500kbps
     if ch == zlgcan.INVALID_CHANNEL_HANDLE {
         panic("channel init failed")
     }
     defer z.CloseDevice(ch)
 
-    // ... send / receive ...
+    // ... transmit / receive ...
 }
 ```
 
-更多示例见 `expl/main.go`。
+See `expl/main.go` for a full example.
 
-## 测试
+## Testing
 
 ```
 go test
 ```
 
-## 注意事项
+## Notes
 
-- 仅 Windows 环境测试
-- 需正确安装 ZLG 设备驱动
-- 使用前请阅读 `USB-CAN-FD-B-API-Manual.md`
+- Windows only (tested)
+- ZLG device driver must be installed
+- Read `USB-CAN-FD-B-API-Manual.md` for API reference
 
-## 许可证
+## License
 
 [MIT](https://choosealicense.com/licenses/mit/)
