@@ -16,29 +16,28 @@ Go wrapper for the ZLG CAN adapter (`zlgcan.dll`). Provides device control, chan
 ## Install
 
 ```
-go get zlgcan
+go get github.com/ucukertz/zlgcan-go
 ```
-
-Ensure `zlgcan_x64/zlgcan.dll` is in the working directory.
 
 ## Usage
 
 ```go
 package main
 
-import "zlgcan"
+import (
+    "log"
+    "github.com/ucukertz/zlgcan-go"
+)
 
 func main() {
-    z := zlgcan.NewZCAN(".\\zlgcan_x64\\zlgcan.dll")
-    dev := z.OpenDevice(zlgcan.ZCAN_USBCAN2, 0, 0)
-    if dev == zlgcan.INVALID_DEVICE_HANDLE {
-        panic("open failed")
+    z, err := zlgcan.NewZCAN("")
+    if err != nil {
+        log.Fatal(err)
     }
-    defer z.CloseDevice(dev)
 
-    ch := can_start(z, dev, 0, 500000) // channel 0 at 500kbps
+    ch := z.OpenAndStart(zlgcan.ZCAN_USBCAN2, 0, 0, 500000)
     if ch == zlgcan.INVALID_CHANNEL_HANDLE {
-        panic("channel init failed")
+        log.Fatal("OpenAndStart failed")
     }
     defer z.CloseDevice(ch)
 
